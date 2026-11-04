@@ -1243,7 +1243,7 @@ wheels = [
 ]
 
 [[package]]
-name = "weibo-search"
+name = "weibo-collector-console"
 version = "0.1.0"
 source = { virtual = "." }
 dependencies = [

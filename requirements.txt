@@ -69,9 +69,9 @@ parsel==1.12.1
     #   itemloaders
     #   scrapy
 pillow==12.3.0 ; python_full_version < '3.11'
-    # via weibo-search
+    # via weibo-collector-console
 pillow==13.0.0 ; python_full_version >= '3.11'
-    # via weibo-search
+    # via weibo-collector-console
 protego==0.7.0
     # via scrapy
 pycparser==3.11 ; python_full_version < '3.11' and implementation_name != 'PyPy' and platform_python_implementation != 'PyPy'
@@ -90,11 +90,11 @@ requests==2.34.2
     # via
     #   requests-file
     #   tldextract
-    #   weibo-search
+    #   weibo-collector-console
 requests-file==3.0.1
     # via tldextract
 scrapy==2.17.0
-    # via weibo-search
+    # via weibo-collector-console
 service-identity==26.1.0
     # via scrapy
 tldextract==5.4.0

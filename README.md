@@ -1,4 +1,4 @@
-# 微博采集管理台
+# Weibo Collector Console · 微博采集工作台
 
 一个面向服务器部署的单人微博采集与内容查看工具。通过浏览器创建采集任务、查看运行进度、维护 Cookie 凭据池，并浏览保存到数据库中的微博和图片。
 
@@ -25,8 +25,8 @@
 以下命令在 Ubuntu 22.04 上执行。先用有仓库访问权限的 GitHub 账号将代码克隆到服务器：
 
 ```bash
-git clone https://github.com/k-giser/weibo-search.git
-cd weibo-search
+git clone https://github.com/k-giser/weibo-collector-console.git
+cd weibo-collector-console
 ```
 
 安装 uv；如果已经安装，可以跳过：
@@ -207,3 +207,7 @@ uv.lock                    # 依赖锁文件
 ## 项目来源
 
 基于 [dataabc/weibo-search](https://github.com/dataabc/weibo-search) 二次开发，当前版本增加了单人采集管理台、内容查看、双表图片保存及 uv 部署配置。
+
+## 许可状态
+
+截至本次整理，未发现上游项目明确的开源许可证。来源标注不代表已经取得修改或再分发授权；本仓库不为上游代码另行授予许可证。公开可见不等同于获得任意使用、修改或分发的授权。

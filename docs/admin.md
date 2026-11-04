@@ -1,4 +1,4 @@
-# Ubuntu 22.04 采集管理台
+# Weibo Collector Console：Ubuntu 22.04 部署
 
 在项目根目录操作。使用服务器普通账号运行，数据目录仅该账号可读写。
 
@@ -20,7 +20,7 @@ uv run --frozen --no-sync python -m weibo.admin.server --data ./admin-data --hos
 
 ## 后台运行
 
-将下面内容保存为 `/etc/systemd/system/weibo-admin.service`。把 `YOUR_USER` 和 `/absolute/path/weibo-search` 替换为实际账号及项目绝对路径。先完成上面的依赖同步和设置密码步骤。用 `command -v uv` 查询 uv 的实际路径，并替换下例中的 `/home/YOUR_USER/.local/bin/uv`。
+将下面内容保存为 `/etc/systemd/system/weibo-admin.service`。把 `YOUR_USER` 和 `/absolute/path/weibo-collector-console` 替换为实际账号及项目绝对路径。先完成上面的依赖同步和设置密码步骤。用 `command -v uv` 查询 uv 的实际路径，并替换下例中的 `/home/YOUR_USER/.local/bin/uv`。
 
 ```ini
 [Unit]
@@ -31,8 +31,8 @@ Wants=network-online.target
 [Service]
 Type=simple
 User=YOUR_USER
-WorkingDirectory=/absolute/path/weibo-search
-ExecStart=/home/YOUR_USER/.local/bin/uv run --frozen --no-sync python -m weibo.admin.server --data /absolute/path/weibo-search/admin-data --host 0.0.0.0 --port 8080
+WorkingDirectory=/absolute/path/weibo-collector-console
+ExecStart=/home/YOUR_USER/.local/bin/uv run --frozen --no-sync python -m weibo.admin.server --data /absolute/path/weibo-collector-console/admin-data --host 0.0.0.0 --port 8080
 Restart=on-failure
 RestartSec=5
 UMask=0077

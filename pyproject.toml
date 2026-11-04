@@ -1,5 +1,5 @@
 [project]
-name = "weibo-search"
+name = "weibo-collector-console"
 version = "0.1.0"
 description = "Weibo collection and single-user administration"
 readme = "README.md"
