@@ -1,214 +1,209 @@
-# 微博关键词搜索爬虫
+# 微博采集管理台
 
-基于 Scrapy，按关键词和时间范围采集微博搜索结果，保存微博文本、用户信息及图片。支持多关键词、自动细分时间范围、Cookie 轮换、代理和断点续爬。
+一个面向服务器部署的单人微博采集与内容查看工具。通过浏览器创建采集任务、查看运行进度、维护 Cookie 凭据池，并浏览保存到数据库中的微博和图片。
 
-已增加单人采集管理台，支持登录、任务队列、进度日志及 Cookie 热更新。Ubuntu 22.04 使用 uv 安装及后台运行方法见 [管理台使用说明](docs/admin.md)，无需 Docker。
+当前使用方式：**Ubuntu 22.04 + uv + 网页管理台**。采集引擎基于 Scrapy，多个任务按队列依次执行，同一时间运行一个采集任务。
 
-任务上的“查看内容”支持正文、作者和日期筛选、分页、微博详情、多图放大及单张原图下载。仅查看最新版任务数据库，采集中也可手动刷新结果。
+## 功能
 
-## 项目结构
+| 模块 | 当前支持 |
+| --- | --- |
+| 登录 | 单管理员密码登录，服务重启后需要重新登录 |
+| 任务配置 | 多关键词、起止日期、微博类型、图片下载开关 |
+| 高级配置 | 请求间隔、数量上限、代理网关 |
+| 任务管理 | 创建、编辑待运行任务、复制任务、队列执行、暂停、恢复、取消 |
+| 进度与日志 | 当前关键词、搜索时间段、当前页码、微博及图片数量、失败数、累计时长、日志查看 |
+| Cookie 管理 | 添加、替换、验证、启用/停用、手动切换、受限时尝试下一凭据 |
+| 内容查看 | 正文搜索、作者筛选、日期筛选、仅看有图、分页和完整微博详情 |
+| 图片查看 | 缩略图、原图放大、多图切换、单张原图下载 |
+| 数据保存 | 每个任务独立的 SQLite 数据库、断点目录和日志 |
 
-```text
-weibo/
-  settings.py              # 采集配置，支持环境变量覆盖
-  items.py                 # 微博字段
-  spiders/search.py        # 搜索、时间细分、分页和内容解析
-  middlewares.py           # Cookie、代理和连续风控处理
-  pipelines.py             # 去重、CSV、数据库与媒体下载
-  utils/
-    util.py                # 搜索参数转换、关键词文件和日期处理
-    cookie_manager.py      # Cookie 文件加载和轮换
-    proxy_pool.py          # 代理获取、验证、轮换和刷新
-    blocked_counter.py     # 连续异常计数
-    sqlite_schema.py       # 后续采集使用的双表字段定义
-tests/                     # 采集相关测试及离线页面样本
-scrapy.cfg                 # Scrapy 项目入口
-pyproject.toml             # 运行依赖与开发依赖
-uv.lock                    # 固定依赖版本
-.python-version            # Python 3.10
-requirements.txt           # 从 uv.lock 导出的兼容依赖清单
-结果文件/                  # CSV、SQLite 和可选视频输出
-crawls/                    # 断点进度和代理缓存
+当前不提供多用户权限管理、定时采集、外部消息通知、内容编辑删除、批量图片打包或网页数据导出。
+
+## 快速部署
+
+以下命令在 Ubuntu 22.04 上执行。先用有仓库访问权限的 GitHub 账号将代码克隆到服务器：
+
+```bash
+git clone https://github.com/k-giser/weibo-search.git
+cd weibo-search
 ```
 
-## 安装与启动
+安装 uv；如果已经安装，可以跳过：
 
-先安装 [uv](https://docs.astral.sh/uv/getting-started/installation/)，在项目目录执行（以下示例使用 Windows PowerShell）。Ubuntu 管理台部署见 [部署说明](docs/admin.md)。
+```bash
+curl -LsSf https://astral.sh/uv/install.sh | sh
+export PATH="$HOME/.local/bin:$PATH"
+```
 
-```powershell
+安装 Python 和锁定的运行依赖：
+
+```bash
 uv python install 3.10
+uv sync --locked --no-dev
+```
+
+设置管理密码，至少 12 位：
+
+```bash
+uv run --frozen --no-sync python -m weibo.admin.server --data ./admin-data --set-password
+```
+
+启动管理台：
+
+```bash
+uv run --frozen --no-sync python -m weibo.admin.server \
+  --data ./admin-data \
+  --host 0.0.0.0 \
+  --port 8080
+```
+
+在其他电脑的浏览器打开 `http://服务器IP:8080`，输入管理密码登录。若通过端口映射访问，请使用映射后的地址，并确认防火墙允许对应来源访问。
+
+这是前台启动方式，关闭终端会影响服务。长期运行请按照 [Ubuntu 部署说明](docs/admin.md#后台运行) 配置 systemd；其中的启动命令同样使用 uv。
+
+> `--host` 不指定时默认监听 `127.0.0.1`，只能本机访问。示例中的 `0.0.0.0` 允许通过服务器网卡访问；请按内网访问范围配置网络。通过不可信网络访问时，应使用反向代理提供 HTTPS。
+
+## 第一次使用
+
+### 1. 添加 Cookie
+
+在浏览器登录微博，打开开发者工具的 Network 面板，刷新微博页面，从微博请求的 Request Headers 中复制**完整 Cookie**。
+
+进入管理台的“Cookie 凭据池”，填写名称和 Cookie 后添加。可以添加多个账号的凭据；列表不会返回完整 Cookie。点击“验证”可检查当时的登录状态，但验证通过不代表搜索接口不会限流。
+
+管理台任务使用网页维护的共享凭据池，无需修改 `settings.py`，也无需为任务设置 Cookie 环境变量。
+
+### 2. 创建任务
+
+在“新建采集任务”中填写：
+
+- **关键词**：每行一个关键词，程序分别搜索。
+- **起止日期**：均包含当天，开始日期不能晚于结束日期。
+- **微博类型**：默认原创微博，也可以选择全部、热门等类型。
+- **下载图片**：开启后，将成功下载的原始图片保存到任务数据库。
+- **高级设置**：请求间隔默认 10 秒；数量上限为 0 表示不限制；代理网关可选。
+
+数量上限按解析条目计数，不等同于数据库新增条数。搜索结果较多时，采集程序会按天、再按小时细分搜索范围。
+
+保存后任务进入“待运行”。点击“启动队列”后，程序按任务顺序依次运行；运行期间新建的任务排到队列末尾。
+
+### 3. 管理运行状态
+
+| 操作 | 实际行为 |
+| --- | --- |
+| 暂停队列 | 当前采集继续，不再启动下一个任务 |
+| 暂停任务 | 请求当前任务正常收尾、保存待处理队列，并暂停后续任务启动 |
+| 恢复到队列 | 将暂停、中断或失败的任务重新放入待运行状态；队列暂停时还需点击“启动队列” |
+| 取消任务 | 结束任务，保留已采集数据；取消正在运行的任务时也会暂停队列 |
+| 编辑 | 待运行任务可编辑；已开始过的任务如需调整采集范围，请复制为新任务 |
+| 复制 | 将任务配置填入新任务表单，修改后保存为独立任务 |
+
+服务或服务器重启后，原运行任务标记为“待恢复”，队列不会自动开始采集。
+
+凭据受限时会尝试切换；全部不可用、数据库写入错误或磁盘空间不足时，队列停止继续启动任务。处理问题后，手动恢复任务并启动队列。替换、启停和手动切换 Cookie 在后续微博请求中生效。
+
+### 4. 查看进度和日志
+
+任务卡片展示保存数量及运行进度，点击“日志”查看最近的日志内容。网页下载的是日志片段，完整文件位于任务目录。
+
+- 微博和图片数量来自实际数据库；重复采集相同微博时可能更新已有记录。
+- 页数为解析回调累计次数；失败数包含请求异常和被丢弃的条目，不等于永久漏采数量。
+- 任务细分范围会动态变化，因此不显示整体完成百分比和预计完成时间。
+
+## 查看微博和图片
+
+点击任务上的“查看内容”，可以在采集继续运行时浏览已保存的数据。
+
+- 正文按字面包含搜索；作者支持昵称片段或完整用户 ID。
+- 支持发布日期范围筛选，以及“仅看有图片”。
+- 按微博发布时间从新到旧排列，每页 20 条，通过上一页、下一页翻页。
+- 列表展示正文摘要和图片缩略图；详情展示完整正文、已保存的附加信息及全部图片。
+- 点击图片放大，支持前后切换、键盘方向键和单张原图下载。
+- 点击“搜索 / 刷新”回到第一页并读取最新数据；后台任务进度刷新不会自动替换正在看的内容。
+
+查看器只读取当前管理台任务的最新版数据库，不导入或兼容旧库、实验库。图片从数据库中的原始字节读取，不依赖原始图片 URL。
+
+数据库没有保存每条微博命中的采集关键词，因此正文筛选不能作为原始命中关系。未显示图片可能是没有开启下载或下载失败。大库正文搜索可能超时，可缩小日期或其他筛选条件后重试。
+
+## 数据和备份
+
+默认运行数据目录为项目根目录下的 `admin-data/`，可通过 `--data` 指定其他位置。启动、重启、设置密码时应保持这个目录一致。
+
+```text
+admin-data/
+├── auth.json                  # 管理密码摘要
+├── state.json                 # 任务与凭据配置
+├── pool.json                  # 采集进程读取的凭据池
+├── pool.status.json           # 凭据运行状态（使用后生成）
+└── <任务ID>/
+    ├── config.json            # 任务运行配置
+    ├── weibo.db               # 微博文本与图片数据库
+    ├── checkpoint/            # Scrapy 待处理队列和去重断点
+    ├── progress.json          # 累计进度
+    ├── crawl.log              # 采集日志
+    └── process.log            # 进程输出
+```
+
+管理台任务默认只写 SQLite，**不生成 CSV，也不下载视频**。数据采用两表保存：
+
+- `weibo`：微博 ID、bid、作者、正文、发布时间、转评赞及其他保留字段。
+- `weibo_image`：微博 ID、图片序号、来源摘要和原始图片二进制，通过微博 ID 关联文本。
+
+图片按保存序号展示，下载失败的图片可能留下序号空缺。SQLite 默认不保存 IP 属地、图片链接、文章链接、视频链接或图片来源链接；这些 URL 在下载过程中按需临时使用。
+
+备份整个数据目录即可同时保留账号、任务、凭据、结果和断点。备份前暂停采集并停止管理服务，以获得一致的文件。目录中包含 Cookie 原文，应限制访问权限；不要提交到 GitHub。数据库和完整日志通过服务器文件工具获取。
+
+断点保存待处理请求，不保证补回已经跳过的异常页面、写入失败的条目或突然断电时的在途请求。正常停止时应等待程序收尾。微博搜索自身的展示范围和风控也可能影响采集完整性。
+
+## 更新与密码重设
+
+使用 systemd 部署后，在项目目录执行：
+
+```bash
+sudo systemctl stop weibo-admin
+git pull --ff-only
+uv sync --locked --no-dev
+sudo systemctl start weibo-admin
+```
+
+更新时保留原来的数据目录。程序不会迁移旧数据库；字段或版本不兼容时会拒绝写入，应使用新任务保存数据。
+
+重设管理密码时，先停止服务，再执行：
+
+```bash
+uv run --frozen --no-sync python -m weibo.admin.server --data ./admin-data --set-password
+```
+
+完成后重新启动服务。
+
+## 开发与测试
+
+`pyproject.toml` 管理依赖，`uv.lock` 锁定版本；当前指定 Python 3.10、Scrapy 2.17.0。`requirements.txt` 是兼容导出，不作为日常部署入口。
+
+```bash
 uv sync --locked
-
-$env:WEIBO_COOKIE = '填入已登录账号的完整 Cookie'
-$env:WEIBO_KEYWORDS = '北京暴雨,北京积水'
-$env:WEIBO_START_DATE = '2023-07-29'
-$env:WEIBO_END_DATE = '2023-08-03'
-
-uv run --locked python -m scrapy crawl search -s JOBDIR=crawls/search
-```
-
-未提供环境变量时，使用 `weibo/settings.py` 中的本地配置。当前默认关键词为北京洪涝相关的十个关键词，时间范围为 2023-07-29 至 2023-08-03，微博类型为原创，不限制是否含图片。
-
-起止日期均包含当天。搜索结果页数达到 `FURTHER_THRESHOLD` 时，先拆分为逐日搜索，再拆分为逐小时搜索；小时是最小粒度。微博搜索自身的展示上限、页面异常等仍可能造成遗漏。
-
-当前版本不提供地区筛选或 IP 属地查询；经确认，后续新建 SQLite 数据库不再保存 `ip` 字段，不会修改已有数据库。
-
-## 关键词与时间配置
-
-所有采集配置集中在 `weibo/settings.py`。
-
-```python
-# 分别搜索多个关键词
-KEYWORD_LIST = ['北京暴雨', '北京积水']
-# 搜索同时包含两个词的微博
-KEYWORD_LIST = ['北京 暴雨']
-# 搜索话题
-KEYWORD_LIST = ['#北京暴雨#']
-# 从 UTF-8 文件读取，每行一个关键词
-KEYWORD_LIST = 'keyword_list.txt'
-
-START_DATE = '2023-07-29'
-END_DATE = '2023-08-03'
-DOWNLOAD_DELAY = 10
-FURTHER_THRESHOLD = 40
-LIMIT_RESULT = 0
-```
-
-`WEIBO_KEYWORDS` 环境变量接受逗号分隔的文本或 JSON 数组。关键词文件路径请通过 `KEYWORD_LIST` 配置。
-
-| 环境变量 | 默认值 | 说明 |
-|---|---|---|
-| `WEIBO_KEYWORDS` | settings 中的关键词 | 分别搜索的关键词列表 |
-| `WEIBO_START_DATE` | `2023-07-29` | 开始日期，`YYYY-MM-DD` |
-| `WEIBO_END_DATE` | `2023-08-03` | 结束日期，`YYYY-MM-DD` |
-| `WEIBO_TYPE` | `1` | 微博类型，见下表 |
-| `WEIBO_CONTAIN_TYPE` | `0` | 必须包含的内容，见下表 |
-| `WEIBO_FURTHER_THRESHOLD` | `40` | 触发时间细分的结果页数；越小通常请求越多 |
-| `WEIBO_LIMIT_RESULT` | `0` | 解析条数上限，`0` 不限制；按去重前计数 |
-| `WEIBO_LOG_LEVEL` | `INFO` | 日志级别 |
-| `LOGSTATS_INTERVAL` | `10` | Scrapy 统计日志间隔，单位秒 |
-
-| 类型配置 | 可选值 |
-|---|---|
-| `WEIBO_TYPE` | `0` 全部，`1` 原创，`2` 热门，`3` 关注人，`4` 认证用户，`5` 媒体，`6` 观点 |
-| `CONTAIN_TYPE` | `0` 不限制，`1` 图片，`2` 视频，`3` 音乐，`4` 短链接 |
-
-## Cookie 与异常处理
-
-在浏览器登录微博后，打开开发者工具的 Network 面板，刷新页面，从微博请求的 Request Headers 中复制完整的 Cookie。通过管理台凭据池、`WEIBO_COOKIE` 环境变量或本地忽略文件 `cookies.local.txt` 配置，不要把真实 Cookie 写进代码或提交到 Git。
-
-多个账号的 Cookie 可以写入 UTF-8 文本文件，每行一个完整 Cookie，空行和 `#` 开头的注释行会跳过：
-
-```text
-# cookies.txt
-SUB=第一个账号的Cookie...
-SUB=第二个账号的Cookie...
-```
-
-```powershell
-$env:WEIBO_COOKIE_FILE = 'cookies.txt'
-uv run --locked python -m scrapy crawl search -s JOBDIR=crawls/search
-```
-
-读取顺序为 Cookie 文件、`WEIBO_COOKIE` 环境变量、本地 settings 默认值。有效的 Cookie 文件可以独立使用，无需同时填写默认 Cookie。请求触发风控时，先尝试切换 Cookie，再由已启用的代理中间件尝试换代理及回退直连。持续异常达到阈值时自动停止。每个新页面独立计算重试次数，翻页不会继承上一页耗尽的重试预算。
-
-| 环境变量 | 默认值 | 说明 |
-|---|---|---|
-| `WEIBO_COOKIE` | 本地配置 | 单账号完整 Cookie |
-| `WEIBO_COOKIE_FILE` | 项目根目录 `cookies.local.txt` | 本地忽略的多账号 Cookie 文件 |
-| `WEIBO_COOKIE_MAX_RETRIES` | `1` | 单请求最多切换 Cookie 的次数 |
-| `WEIBO_ANOMALY_MAX_RETRIES` | `2` | 无有效微博卡片的异常页重试次数 |
-| `WEIBO_CONSECUTIVE_BLOCKED_LIMIT` | `5` | 连续风控或异常页的停止阈值，`0` 禁用 |
-
-带明确空结果标记的页面正常结束该搜索分支；无有效卡片且没有空结果标记的页面视为异常页。收到正常响应后，连续异常计数清零。
-
-## 代理配置
-
-默认直连。代理仅用于微博页面请求，图片 CDN 请求直连。
-
-```powershell
-# 免费代理池
-$env:WEIBO_PROXY_ENABLED = '1'
-
-# 付费代理提取 API：返回每行一个代理的文本
-$env:WEIBO_PROXY_SOURCE = 'paid'
-$env:WEIBO_PROXY_API_URL = 'https://供应商的提取接口'
-
-# 或固定网关：由供应商轮换出口，不建立本地代理池
-$env:WEIBO_PROXY_GATEWAY = 'http://用户名:密码@代理域名:端口'
-```
-
-提取 API 与固定网关任选一种。配置了网关时优先使用网关。代理池支持 `http://host:port`、`https://host:port` 和纯 `host:port`，验证可用后轮换；失效时剔除，池空或重试用尽后回退直连。固定网关模式不做本地验证和轮换。
-
-| 环境变量 | 默认值 | 说明 |
-|---|---|---|
-| `WEIBO_PROXY_ENABLED` | `0` | `1` 启用代理 |
-| `WEIBO_PROXY_SOURCE` | `free` | `free` 或 `paid` |
-| `WEIBO_PROXY_LIST_URL` | free-proxy-list CDN | 代理列表地址 |
-| `WEIBO_PROXY_API_URL` | 空 | 付费提取 API |
-| `WEIBO_PROXY_GATEWAY` | 空 | 固定代理网关，可省略 `http://` |
-| `WEIBO_PROXY_COUNTRY` | 空 | 未指定列表地址时使用的国家分类，ISO 国家代码 |
-| `WEIBO_PROXY_MAX_PROXIES` | `200` | 可用池容量 |
-| `WEIBO_PROXY_VERIFY_URL` | `https://httpbin.org/ip` | 验证目标 |
-| `WEIBO_PROXY_VERIFY_TIMEOUT` | `8` | 验证超时，单位秒 |
-| `WEIBO_PROXY_MAX_RETRIES` | `3` | 单请求最多换代理次数 |
-| `WEIBO_PROXY_REFRESH_MINUTES` | `5` | 列表刷新间隔，`0` 不刷新 |
-
-## 数据输出
-
-默认启用的管线依次为：
-
-```text
-微博 ID 去重 → CSV → 图片下载 → SQLite
-```
-
-- CSV：`结果文件/<关键词>/<关键词>.csv`，使用 UTF-8 BOM 编码。
-- SQLite：后续采集默认写入 `结果文件/weibo_new.db`。`weibo` 表每条微博一行，`weibo_image` 表每张图片一行，通过 `weibo_id` 关联，以 `seq` 保留图片顺序。
-- 图片：下载后直接入库，不生成图片文件；下载失败时保留微博文本，跳过对应图片。
-- 视频：可选启用 `MyVideoPipeline`，保存到 `结果文件/<关键词>/videos/`。
-
-字段包括微博 ID、bid、用户 ID、昵称、正文、文章链接、位置、话题、@用户、转评赞、发布时间、来源、图片和视频链接、转发原文 ID、认证及会员信息。转发微博对应的原文会作为独立条目保存。
-
-图片字节只随正在处理的条目传递，入库后释放，不在下载管线中保留全量成功图片缓存。同一图片的并发请求仍共享下载结果；完成后再次遇到该 URL 时可能重新下载。
-
-图片表的 `image` 列直接保存原始图片字节，不打包、不转换为 Base64，也不改变图片质量。无图时不写图片行；部分下载失败时保留对应序号空缺。重复采集时，未下载成功不会清空已有图片；部分失败使用 `image_key` 来源摘要补齐，避免重排后关联错误。该摘要是临时图片 URL 的 SHA256 二进制值，不是可以打开的 URL。
-
-微博表增加 `(created_at, id)` 索引，方便按时间查询。图片表以 `(weibo_id, seq)` 为主键，可直接读取、导出或更新单张图片。
-
-SQLite 初始化失败会中止启动；写入失败会回滚该条微博及其图片，明确计为未保存，并立即请求关闭采集。CSV 在 SQLite 之前写入，因此两者可能存在差异；修复存储问题后应核对失败记录，断点队列不会自动补回已处理失败的条目。
-
-去重管线在单次运行内按微博 ID 去重；SQLite 以微博 ID 为主键更新记录。CSV 以追加方式写入，跨次运行可能重复。
-
-在 `ITEM_PIPELINES` 中启用或关闭输出类型。SQLite 文件名可通过环境变量 `SQLITE_DATABASE` 或 `settings.py` 中的同名配置修改，默认 `weibo_new.db`。已有数据库不迁移、不改表；程序只读检查目标库的版本和字段，旧版库或字段配置不一致时拒绝写入并提示使用新文件。
-
-经确认，`SQLITE_DROP_FIELDS` 当前为 `['ip', 'pics', 'article_url', 'video_url', 'weibo_image.url']`，其余原有字段保留。它只影响新建数据库，不会删除已有表的列。调整保留字段后，应同时选择新的 `SQLITE_DATABASE` 文件名。CSV 和可选的 MySQL、MongoDB 输出保持各自原有结构。
-
-图片可以用 `SELECT image FROM weibo_image WHERE weibo_id=? AND seq=?` 单独读取，返回的原始字节可直接显示或导出。无需读取或解包同条微博的其它图片。
-
-URL 字段的排除标记分别为 `pics`、`article_url`、`video_url`、`weibo_image.url`，均已确认从后续新库排除。爬虫仍会在内存中临时使用 URL 下载图片或视频，不将这些原始 URL 写入 SQLite。微博 ID、bid、用户 ID、图片原始字节及图片序号均保留。
-
-## 停止、续爬与进度
-
-使用 `JOBDIR` 时，按一次 Ctrl+C，等待正常收尾并保存待处理队列；再次运行相同命令继续。更换搜索条件时使用新的 `JOBDIR`，避免混用旧的请求队列和去重记录。
-
-自动停止后可更新 Cookie 或代理，再使用相同命令续爬。断点机制保存尚未处理的请求队列，不保证补抓此前已跳过的异常页面。
-
-每隔约 5 秒输出采集进度：
-
-```text
-[进度] 阶段=按天细分 关键词=北京暴雨 已请求页=37 已解析=152 结果页数=12 | https://s.weibo.com/...
-```
-
-阶段包括初始范围、按天细分和按小时解析。已解析为去重和存储前的计数，实际保存条数以 Scrapy 统计或数据库为准；结果页数为当前搜索条件的分页数量。细分过程中可能暂时没有新条目保存。
-
-## 测试
-
-```powershell
 uv run --locked python -m pytest -q
 ```
 
-测试覆盖离线页面解析、时间细分、每页独立重试、Cookie 文件校验、连续异常停止、图片处理及 SQLite 存储，并使用真实 Scrapy 引擎验证共享图片下载和存储失败关闭。下载由离线响应替代，不访问微博。
+测试使用离线页面和临时数据库，覆盖页面解析、Cookie 轮换、任务管理、图片存储、内容查询及登录保护，不访问真实微博。
+
+```text
+weibo/
+├── admin/                 # 管理服务、任务进程、内容查询及网页
+├── spiders/search.py      # 微博搜索与内容解析
+├── middlewares.py         # Cookie、代理和连续风控处理
+├── pipelines.py           # 数据保存与图片下载
+├── settings.py            # 采集引擎基础配置
+└── utils/                 # Cookie、代理、日期和 SQLite 字段定义
+docs/admin.md              # Ubuntu 部署、后台服务及维护说明
+tests/                     # 离线测试与页面样本
+pyproject.toml             # uv 项目与依赖配置
+uv.lock                    # 依赖锁文件
+```
+
+底层仍保留 `uv run --locked python -m scrapy crawl search` 命令行入口，其配置和输出路径与管理台任务不同；网页任务请通过管理台创建，不要混用断点目录。
 
 ## 项目来源
 
-本项目基于 [dataabc/weibo-search](https://github.com/dataabc/weibo-search) 二次开发，增加了采集管理台、内容查看、图片数据库保存和 uv 部署配置。
+基于 [dataabc/weibo-search](https://github.com/dataabc/weibo-search) 二次开发，当前版本增加了单人采集管理台、内容查看、双表图片保存及 uv 部署配置。
