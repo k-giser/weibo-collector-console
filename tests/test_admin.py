@@ -88,7 +88,7 @@ def test_http_auth_csrf_and_secret_protection(tmp_path):
         assert session.get(base + '/api/state').status_code == 401
         assert session.post(base + '/api/login', json={}).status_code == 403
         session.headers['X-Admin-Request'] = '1'
-        assert session.post(base + '/api/login', json={'password': 'test-password'}).status_code == 200
+        assert session.post(base + '/api/login', json={'username': 'admin', 'password': 'test-password'}).status_code == 200
         assert session.post(base + '/api/action', json=dict(op='cookie', value='SUB=private')).status_code == 200
         response = session.get(base + '/api/state')
         assert response.status_code == 200

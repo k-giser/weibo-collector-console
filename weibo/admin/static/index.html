@@ -1,8 +1,8 @@
 <!doctype html>
 <html lang="zh-CN"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>微博采集管理</title><link rel="stylesheet" href="/style.css">
-<body><header><div><small>WEIBO · COLLECTION</small><h1>采集工作台</h1></div><button id="logout" hidden>退出登录</button></header>
+<body><header><div><small>WEIBO · COLLECTION</small><h1>采集工作台</h1></div><div><button id="change-password" class="secondary" hidden>修改密码</button> <button id="logout" hidden>退出登录</button></div></header>
 <div id="message" role="status"></div>
-<section id="login"><h2>登录管理台</h2><form id="login-form"><label>管理密码<input name="password" type="password" required autocomplete="current-password"></label><button>登录</button></form></section>
+<section id="login"><h2>登录管理台</h2><form id="login-form"><label>账号<input name="username" value="admin" required autocomplete="username"></label><label>管理密码<input name="password" type="password" required autocomplete="current-password"></label><button>登录</button></form></section>
 <main id="workspace" hidden>
 <section><div class="heading"><div><h2>任务队列</h2><p id="queue-state"></p></div><div><button id="start">启动队列</button> <button id="queue-pause" class="secondary">暂停队列</button></div></div><div id="jobs"></div></section>
 <section id="viewer" hidden>
@@ -13,4 +13,5 @@
 <section><h2>Cookie 凭据池</h2><p>健康时继续使用当前凭据，受限时尝试轮换。完整凭据只在输入时显示。</p><div id="cookies"></div><form id="cookie-form"><label>名称<input name="label" placeholder="例如：采集账号 1" required></label><label>完整 Cookie<textarea name="value" required rows="3" autocomplete="off" spellcheck="false"></textarea></label><button>添加凭据</button></form></section></div>
 <section><div class="heading"><h2>运行日志</h2><a id="download" hidden download="crawl.log">下载当前日志片段</a></div><p>选择任务的“日志”查看；最多显示最近 128 KB，完整日志保存在任务目录。</p><pre id="logs">尚未选择任务</pre></section></main><dialog id="post-dialog"><div class="heading"><h2>微博详情</h2><button id="detail-close" class="secondary">关闭</button></div><div id="post-detail"></div></dialog>
 <dialog id="image-dialog"><div class="heading"><span id="image-counter"></span><button id="image-close" class="secondary">关闭图片</button></div><p id="image-status" role="status"></p><img id="large-image" alt="微博原图"><div class="pager"><button id="image-prev" class="secondary">上一张</button><a id="image-download" download>下载原图</a><button id="image-next" class="secondary">下一张</button></div></dialog>
+<dialog id="password-dialog"><div class="heading"><h2>修改密码</h2><button id="password-close" class="secondary" type="button">关闭</button></div><form id="password-form"><label>当前密码<input name="current_password" type="password" required autocomplete="current-password"></label><label>新密码<input name="new_password" type="password" required autocomplete="new-password"></label><label>确认新密码<input name="confirm_password" type="password" required autocomplete="new-password"></label><p id="password-message" role="status"></p><button>保存新密码</button></form></dialog>
 <script src="/app.js"></script><script src="/viewer.js"></script></body></html>

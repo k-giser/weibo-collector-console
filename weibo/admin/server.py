@@ -25,6 +25,27 @@ from weibo.admin import viewer
 ROOT = Path(__file__).resolve().parents[2]
 
 
+def password_record(password):
+    if not isinstance(password, str) or not password:
+        raise ValueError('密码不能为空')
+    salt = secrets.token_bytes(16)
+    return dict(username='admin', salt=salt.hex(), hash=hashlib.pbkdf2_hmac(
+        'sha256', password.encode(), salt, 600000).hex())
+
+
+def password_matches(auth, password):
+    if not isinstance(password, str):
+        return False
+    digest = hashlib.pbkdf2_hmac('sha256', password.encode(), bytes.fromhex(auth['salt']), 600000).hex()
+    return hmac.compare_digest(digest, auth['hash'])
+
+
+def initialize_auth(path):
+    if not path.exists():
+        atomic_json(path, password_record('admin'))
+    return json.loads(path.read_text(encoding='utf-8'))
+
+
 class Manager:
     def __init__(self, folder):
         self.folder = Path(folder).resolve()
@@ -324,16 +345,30 @@ class Handler(BaseHTTPRequestHandler):
                 if len(history) >= 10:
                     return self.reply({'error': '尝试次数过多，请五分钟后再试'}, 429)
                 history.append(now)
-                auth = self.server.auth
-                digest = hashlib.pbkdf2_hmac('sha256', str(data.get('password', '')).encode(), bytes.fromhex(auth['salt']), 600000).hex()
-                if not hmac.compare_digest(digest, auth['hash']):
-                    return self.reply({'error': '密码错误'}, 401)
-                attempts.pop(address, None)
-                token = secrets.token_urlsafe(32)
-                self.server.sessions[token] = now + 43200
+                with self.server.manager.lock:
+                    auth = self.server.auth
+                    if data.get('username') != auth.get('username', 'admin') or not password_matches(auth, data.get('password')):
+                        return self.reply({'error': '账号或密码错误'}, 401)
+                    attempts.pop(address, None)
+                    token = secrets.token_urlsafe(32)
+                    self.server.sessions[token] = now + 43200
                 return self.reply({'ok': True}, cookie=f'session={token}; HttpOnly; SameSite=Strict; Path=/; Max-Age=43200')
             if not self.authenticated():
                 return self.reply({'error': '请先登录'}, 401)
+            if self.path == '/api/password':
+                with self.server.manager.lock:
+                    if not self.authenticated():
+                        return self.reply({'error': '请先登录'}, 401)
+                    if not password_matches(self.server.auth, data.get('current_password')):
+                        return self.reply({'error': '当前密码错误'}, 400)
+                    password = data.get('new_password')
+                    if password != data.get('confirm_password'):
+                        return self.reply({'error': '两次新密码必须一致'}, 400)
+                    auth = password_record(password)
+                    atomic_json(self.server.manager.folder / 'auth.json', auth)
+                    self.server.auth = auth
+                    self.server.sessions.clear()
+                return self.reply({'ok': True}, cookie='session=; HttpOnly; SameSite=Strict; Path=/; Max-Age=0')
             if self.path == '/api/logout':
                 cookies = SimpleCookie(self.headers.get('Cookie', ''))
                 self.server.sessions.pop(cookies['session'].value, None)
@@ -344,6 +379,8 @@ class Handler(BaseHTTPRequestHandler):
             self.reply({'ok': True})
         except (ValueError, KeyError, StopIteration, TypeError):
             self.reply({'error': '操作失败，请检查输入及任务状态'}, 400)
+        except OSError:
+            self.reply({'error': '无法保存配置，请检查目录权限及磁盘空间'}, 500)
 
 
 def main():
@@ -362,16 +399,14 @@ def main():
         import fcntl
         fcntl.flock(lock_file, fcntl.LOCK_EX | fcntl.LOCK_NB)
     auth_path = folder / 'auth.json'
-    if args.set_password or not auth_path.exists():
-        password = getpass.getpass('设置管理密码（至少12位）: ')
-        if len(password) < 12 or password != getpass.getpass('再次输入密码: '):
-            raise SystemExit('两次密码必须一致，且至少12位')
-        salt = secrets.token_bytes(16)
-        atomic_json(auth_path, dict(salt=salt.hex(), hash=hashlib.pbkdf2_hmac('sha256', password.encode(), salt, 600000).hex()))
-        if args.set_password:
-            return
+    if args.set_password:
+        password = getpass.getpass('设置管理密码: ')
+        if not password or password != getpass.getpass('再次输入密码: '):
+            raise SystemExit('密码不能为空，且两次密码必须一致')
+        atomic_json(auth_path, password_record(password))
+        return
     server = ThreadingHTTPServer((args.host, args.port), Handler)
-    server.auth = json.loads(auth_path.read_text(encoding='utf-8'))
+    server.auth = initialize_auth(auth_path)
     server.sessions, server.attempts = {}, {}
     manager = server.manager = Manager(folder)
     worker = threading.Thread(target=manager.loop, daemon=True)

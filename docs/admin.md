@@ -11,16 +11,15 @@ export PATH="$HOME/.local/bin:$PATH"
 uv python install 3.10
 uv sync --locked --no-dev
 
-# 设置密码，然后启动管理台
-uv run --frozen --no-sync python -m weibo.admin.server --data ./admin-data --set-password
+# 启动管理台（首次启动自动创建 admin / admin）
 uv run --frozen --no-sync python -m weibo.admin.server --data ./admin-data --host 0.0.0.0 --port 8080
 ```
 
-浏览器打开 `http://虚拟机地址:8080`，登录后添加完整 Cookie、新建任务，再启动队列。端口映射指向此端口，限制访问来源为自己的内网。通过不可信网络访问时，应由已有反向代理提供 HTTPS，保护密码和 Cookie 传输。
+浏览器打开 `http://虚拟机地址:8080`，首次使用账号 `admin`、密码 `admin` 登录；已有配置使用原密码。登录后可点击右上角“修改密码”，然后添加完整 Cookie、新建任务并启动队列。端口映射指向此端口，限制访问来源为自己的内网。通过不可信网络访问时，应由已有反向代理提供 HTTPS，保护密码和 Cookie 传输。
 
 ## 后台运行
 
-将下面内容保存为 `/etc/systemd/system/weibo-admin.service`。把 `YOUR_USER` 和 `/absolute/path/weibo-collector-console` 替换为实际账号及项目绝对路径。先完成上面的依赖同步和设置密码步骤。用 `command -v uv` 查询 uv 的实际路径，并替换下例中的 `/home/YOUR_USER/.local/bin/uv`。
+将下面内容保存为 `/etc/systemd/system/weibo-admin.service`。把 `YOUR_USER` 和 `/absolute/path/weibo-collector-console` 替换为实际账号及项目绝对路径。先完成上面的依赖同步步骤；首次启动会自动创建默认账号和密码。用 `command -v uv` 查询 uv 的实际路径，并替换下例中的 `/home/YOUR_USER/.local/bin/uv`。
 
 ```ini
 [Unit]
@@ -85,7 +84,7 @@ uv run --locked python -m pytest -q
 - 页面日志下载为最近 128 KB 片段；完整日志及数据库通过服务器文件工具获取。复制数据库前先暂停任务，避免复制到写入中的文件。
 - 空闲磁盘不足 512 MiB 时暂停当前任务及队列。磁盘实际耗尽仍会由数据库错误保护收尾。
 - Scrapy 断点保留待处理请求，不保证异常跳过的页面或进程突然被杀时的在途请求全部恢复。正常暂停优先等待处理完成。
-- 备份整个 `admin-data` 目录；其中包含账号密码摘要及 Cookie 原文，目录不可共享或提交到 Git。密码重设需先停止服务，使用 `--set-password`。登录会话在服务重启后失效。
+- 备份整个 `admin-data` 目录；其中包含账号密码摘要及 Cookie 原文，目录不可共享或提交到 Git。登录后可在页面中修改密码，无最小长度或复杂度要求，但不能为空，且两次新密码必须一致。修改成功后所有会话失效，采集任务继续运行。忘记密码时先停止服务，再使用 `--set-password` 重设；账号固定为 `admin`。已有密码不会在更新或重启时自动重置。登录会话在服务重启后失效。
 
 ## 内容查看
 
